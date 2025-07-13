@@ -641,7 +641,7 @@ local function spawn_music_particles(pos, node)
         collisiondetection = true,
         collision_removal = false,
         texture = texture,
-        glow = 5,
+        glow = 15,
     })
 end
 
