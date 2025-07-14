@@ -1,0 +1,4 @@
+jukebox_top.png
+jukebox_side.png
+cd1.png
+cd2.png
