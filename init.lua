@@ -1,5 +1,3 @@
--- Je rédige ces commentaires afin de t'aider si tu souhaite modifier le code plus facilement sans faire de conneries
-
 local modname = core.get_current_modname()
 local S = core.get_translator(modname) -- Module permetant la traduction, seulement l'anglais et le francais sont dispo
 
@@ -15,7 +13,6 @@ local config = {
 -- Probleme de dépense de fonction avec eject_disc et stop_jukebox (dépéndance circulaire)
 eject = {}
 
--- On définie les couleurs des particles des notes de musiques (particle)
 local particle_colors = {
     "#FF6464", -- Rouge ...
     "#64FF64",
@@ -29,7 +26,6 @@ local particle_colors = {
     "#FFC896",
 }
 
--- Liste des particle qui apparaitront lors de la lecture d'une musique, tu peux en ajouté d'autre stv
 local jukebox_music_particle_textures = {
     "jukebox_particle_1.png",
     "jukebox_particle_2.png",
@@ -148,61 +144,6 @@ local function spawn_music_particles(pos, node, disc_name)
     })
 end
 
-
-local function stop_jukebox(pos, should_eject)
-    if not pos then return end
-
-    local pos_hash = core.hash_node_position(pos)
-    local jukebox_data = active_jukeboxes[pos_hash]
-
-    if jukebox_data then
-        if jukebox_data.sound then
-            core.sound_stop(jukebox_data.sound)
-        end
-
-        if jukebox_data.particle_timer then
-            jukebox_data.particle_timer:cancel()
-        end
-        if jukebox_data.music_timer then
-            jukebox_data.music_timer:cancel()
-        end
-        if jukebox_data.distance_check_timer then
-            jukebox_data.distance_check_timer:cancel()
-        end
-
-        if should_eject and jukebox_data.disc_name then
-            eject.eject_disc(pos, jukebox_data.disc_name)
-        end
-
-        active_jukeboxes[pos_hash] = nil
-
-        local node = core.get_node(pos)
-        if node.name == "jukebox:jukebox_playing" then
-            core.set_node(pos, {name = "jukebox:jukebox", param2 = node.param2})
-        end
-    end
-end
-
--- On expulse le disque proche du block de jukebox en hauteur
--- On ajoute une petite vélocité aléatoire pour donné un effet de lancement
--- Et on stop la musique en cours
-function eject.eject_disc(pos, disc_name)
-    if not pos or not disc_name then return end
-
-    local eject_pos = {x = pos.x, y = pos.y + 0.5, z = pos.z}
-
-    local obj = core.add_item(eject_pos, disc_name)
-    if obj then
-        obj:set_velocity({
-            x = (math.random() - 0.5) * 2,
-            y = 3,
-            z = (math.random() - 0.5) * 2
-        })
-    end
-
-    stop_jukebox(pos)
-end
-
 -- Redémarre le son pour les joueurs dans la porté, en tenant compte du temps écoulé (music)
 local function restart_sound_for_players(pos, disc_data, players_in_range)
     local pos_hash = core.hash_node_position(pos)
@@ -270,6 +211,77 @@ local function update_sound(pos, disc_data)
     end)
 end
 
+local function update_jukebox_infotext(pos, disc_name)
+    local meta = core.get_meta(pos)
+
+    if disc_name then
+        local disc_data = music_discs[disc_name]
+        if disc_data then
+            local duration_minutes = math.floor(disc_data.duration / 60)
+            local duration_seconds = disc_data.duration % 60
+            local duration_str = string.format("%d:%02d", duration_minutes, duration_seconds)
+
+            local infotext = S("Currently Playing: ") .. disc_data.name ..
+                           "\n" .. S("Artist: ") .. disc_data.description ..
+                           "\n" .. S("Duration: ") .. duration_str
+            meta:set_string("infotext", infotext)
+        end
+    else
+        meta:set_string("infotext", S("Jukebox\nPunch with a music disc to play"))
+    end
+end
+
+local function stop_jukebox(pos, should_eject)
+    if not pos then return end
+
+    local pos_hash = core.hash_node_position(pos)
+    local jukebox_data = active_jukeboxes[pos_hash]
+
+    if jukebox_data then
+        if jukebox_data.sound then
+            core.sound_stop(jukebox_data.sound)
+        end
+
+        if jukebox_data.particle_timer then
+            jukebox_data.particle_timer:cancel()
+        end
+        if jukebox_data.music_timer then
+            jukebox_data.music_timer:cancel()
+        end
+        if jukebox_data.distance_check_timer then
+            jukebox_data.distance_check_timer:cancel()
+        end
+
+        if should_eject and jukebox_data.disc_name then
+            eject.eject_disc(pos, jukebox_data.disc_name)
+        end
+
+        update_jukebox_infotext(pos, nil)
+        active_jukeboxes[pos_hash] = nil
+
+    end
+end
+
+-- On expulse le disque proche du block de jukebox en hauteur
+-- On ajoute une petite vélocité aléatoire pour donné un effet de lancement
+-- Et on stop la musique en cours
+function eject.eject_disc(pos, disc_name)
+    if not pos or not disc_name then return end
+
+    local eject_pos = {x = pos.x, y = pos.y + 0.5, z = pos.z}
+
+    local obj = core.add_item(eject_pos, disc_name)
+    if obj then
+        obj:set_velocity({
+            x = (math.random() - 0.5) * 2,
+            y = 3,
+            z = (math.random() - 0.5) * 2
+        })
+    end
+
+    stop_jukebox(pos)
+end
+
 local function start_jukebox(pos, disc_name)
     if not pos or not disc_name then return false end
 
@@ -302,9 +314,6 @@ local function start_jukebox(pos, disc_name)
         end
     end
 
-    local node = core.get_node(pos)
-    core.set_node(pos, {name = "jukebox:jukebox_playing", param2 = node.param2})
-
     -- Eh oui une fonction dans une fonction, c'est pas beau mais sa marche
     -- On crée une boucle pour faire apparaitre les particles de musique
     local function spawn_particles_loop()
@@ -328,6 +337,7 @@ local function start_jukebox(pos, disc_name)
         start_time = core.get_gametime()
     }
 
+    update_jukebox_infotext(pos, disc_name)
     spawn_particles_loop()
     update_sound(pos, disc_data)
 
@@ -349,19 +359,22 @@ core.register_node("jukebox:jukebox", {
     paramtype2 = "facedir",
     groups = {choppy = 2, oddly_breakable_by_hand = 2},
     sounds = default.node_sound_wood_defaults(),
-
     on_punch = function(pos, node, puncher, pointed_thing)
         if not puncher or not puncher:is_player() then
             return
         end
 
+        local pos_hash = core.hash_node_position(pos)
+        local jukebox_data = active_jukeboxes[pos_hash]
         local wielded_item = puncher:get_wielded_item()
         local item_name = wielded_item:get_name()
 
-        if is_music_disc(item_name) then
+        if jukebox_data then
+            eject.eject_disc(pos, jukebox_data.disc_name)
+            --core.chat_send_player(puncher:get_player_name(), S("Music stopped and disc ejected"))
+        elseif is_music_disc(item_name) then
             wielded_item:take_item()
             puncher:set_wielded_item(wielded_item)
-
             if start_jukebox(pos, item_name) then
                 local disc_data = music_discs[item_name]
                 core.chat_send_player(puncher:get_player_name(), S("Currently reading: ") .. disc_data.description)
@@ -370,53 +383,12 @@ core.register_node("jukebox:jukebox", {
                 core.chat_send_player(puncher:get_player_name(), S("Error reading disk!"))
             end
         else
-            core.chat_send_player(puncher:get_player_name(), S("Use a music disc to play music!"))
+            --core.chat_send_player(puncher:get_player_name(), S("Use a music disc to play music!"))
         end
     end,
-
     on_destruct = function(pos)
         stop_jukebox(pos)
     end,
-
-    can_dig = function(pos)
-        local pos_hash = core.hash_node_position(pos)
-        return not active_jukeboxes[pos_hash]
-    end
-})
-
-core.register_node("jukebox:jukebox_playing", {
-    description = S("Jukebox (Now Playing)"),
-    tiles = {
-        "jukebox_top.png",
-        "default_wood.png",
-        "jukebox_side_lr.png",
-        "jukebox_side_lr.png",
-        "jukebox_side_fb.png",
-        "jukebox_side_fb.png",
-    },
-    paramtype2 = "facedir",
-    groups = {choppy = 2, oddly_breakable_by_hand = 2, not_in_creative_inventory = 1},
-    sounds = default.node_sound_wood_defaults(),
-    drop = "jukebox:jukebox",
-
-    on_punch = function(pos, node, puncher, pointed_thing)
-        if not puncher or not puncher:is_player() then
-            return
-        end
-
-        local pos_hash = core.hash_node_position(pos)
-        local jukebox_data = active_jukeboxes[pos_hash]
-
-        if jukebox_data then
-            eject.eject_disc(pos, jukebox_data.disc_name)
-            core.chat_send_player(puncher:get_player_name(), S("Music stopped and disc ejected"))
-        end
-    end,
-
-    on_destruct = function(pos)
-        stop_jukebox(pos)
-    end,
-
     can_dig = function(pos)
         local pos_hash = core.hash_node_position(pos)
         return not active_jukeboxes[pos_hash]
@@ -442,6 +414,7 @@ for disc_name, disc_data in pairs(music_discs) do
 end
 
 -- Quand le serveur shutdown alors on ejecte tout les disques en cour de lecture
+--[[
 core.register_on_shutdown(function()
     for pos_hash, jukebox_data in pairs(active_jukeboxes) do
         if jukebox_data and jukebox_data.disc_name then
@@ -452,3 +425,296 @@ core.register_on_shutdown(function()
         end
     end
 end)
+]]--
+
+core.register_on_mods_loaded(function()
+    for pos_hash, jukebox_data in pairs(active_jukeboxes) do
+        if jukebox_data and jukebox_data.disc_name then
+            local pos = core.get_position_from_hash(pos_hash)
+            if pos then
+                start_jukebox(pos, jukebox_data.disc_name)
+            end
+        end
+    end
+end)
+
+core.register_node("jukebox:platine", {
+    description = S("Jukebox"),
+    tiles = {
+        "platine_top.png", "default_wood.png", "platine_side.png",
+        "platine_side.png", "platine_side.png", "platine_side_front.png",
+    },
+    paramtype2 = "facedir",
+    groups = {choppy = 2, oddly_breakable_by_hand = 2},
+    sounds = default.node_sound_wood_defaults(),
+    on_punch = function(pos, node, puncher, pointed_thing)
+        if not puncher or not puncher:is_player() then
+            return
+        end
+
+        local pos_hash = core.hash_node_position(pos)
+        local jukebox_data = active_jukeboxes[pos_hash]
+        local wielded_item = puncher:get_wielded_item()
+        local item_name = wielded_item:get_name()
+
+        if jukebox_data then
+            eject.eject_disc(pos, jukebox_data.disc_name)
+            --core.chat_send_player(puncher:get_player_name(), S("Music stopped and disc ejected"))
+        elseif is_music_disc(item_name) then
+            wielded_item:take_item()
+            puncher:set_wielded_item(wielded_item)
+            if start_jukebox(pos, item_name) then
+                local disc_data = music_discs[item_name]
+                core.chat_send_player(puncher:get_player_name(), S("Currently reading: ") .. disc_data.description)
+            else
+                puncher:get_inventory():add_item("main", item_name)
+                core.chat_send_player(puncher:get_player_name(), S("Error reading disk!"))
+            end
+        else
+            --core.chat_send_player(puncher:get_player_name(), S("Use a music disc to play music!"))
+        end
+    end,
+
+    on_destruct = function(pos)
+        stop_jukebox(pos)
+    end,
+
+    can_dig = function(pos)
+        local pos_hash = core.hash_node_position(pos)
+        return not active_jukeboxes[pos_hash]
+    end,
+})
+
+minetest.register_node("jukebox:console", {
+	description = "Console",
+	tiles = {
+		"console_top.png",
+		"console_side.png", "console_side.png",
+		"console_side.png", "console_side.png", "console_side.png",
+	},
+	groups = {choppy = 2, oddly_breakable_by_hand = 2},
+	paramtype2 = "facedir",
+	drawtype = "nodebox",
+	node_box = {
+		type = "fixed",
+		fixed = { {-0.5, -0.5, -0.5, 0.5, 0.5, 0.5} }, -- hauteur 1 bloc
+	},
+	selection_box = {
+		type = "fixed",
+		fixed = { -0.5, -0.5, -0.5, 0.5, 0.5, 0.5 },
+	},
+	collision_box = {
+		type = "fixed",
+		fixed = { -0.5, -0.5, -0.5, 0.5, 0.5, 0.5 },
+	},
+
+	on_construct = function(pos)
+		local meta = minetest.get_meta(pos)
+		local inv = meta:get_inventory()
+		inv:set_size("storage", 6 * 4)
+		meta:set_string("formspec",
+			"size[9,10.5]" ..
+			"bgcolor[#080808BB;true]" ..
+			"list[current_name;storage;1.5,0.2;6,6;]" ..
+			"list[current_player;main;0.5,6.5;8,4;]")
+	end,
+
+	on_rightclick = function(pos, node, clicker)
+		local meta = minetest.get_meta(pos)
+		local fs = meta:get_string("formspec")
+		minetest.show_formspec(clicker:get_player_name(), "jukebox:console", fs)
+	end,
+
+	can_dig = function(pos, player)
+		local meta = minetest.get_meta(pos)
+		local inv = meta:get_inventory()
+		return inv:is_empty("storage")
+	end,
+})
+
+minetest.register_node("jukebox:platine_dj", {
+    description = "Platine DJ",
+    tiles = {
+        "platine_dj_top.png",
+        "platine_dj_side.png",
+        "platine_dj_side.png",
+        "platine_dj_side.png",
+        "platine_dj_side.png",
+        "platine_dj_side.png",
+    },
+    groups = {choppy = 2, oddly_breakable_by_hand = 2},
+    paramtype2 = "facedir",
+    drawtype = "nodebox",
+    node_box = {
+        type = "fixed",
+        fixed = {
+            {-0.5, -0.5, -0.5, 0.5, -0.25, 0.5}, -- Hauteur : 0.4 bloc (0.5 - 0.1)
+        },
+    },
+    selection_box = {
+        type = "fixed",
+        fixed = {-0.5, -0.5, -0.5, 0.5, -0.25, 0.5},
+    },
+    collision_box = {
+        type = "fixed",
+        fixed = {-0.5, -0.5, -0.5, 0.5, -0.25, 0.5},
+    },
+
+    on_punch = function(pos, node, puncher, pointed_thing)
+        if not puncher or not puncher:is_player() then
+            return
+        end
+
+        local pos_hash = core.hash_node_position(pos)
+        local jukebox_data = active_jukeboxes[pos_hash]
+        local wielded_item = puncher:get_wielded_item()
+        local item_name = wielded_item:get_name()
+
+        if jukebox_data then
+            eject.eject_disc(pos, jukebox_data.disc_name)
+            --core.chat_send_player(puncher:get_player_name(), S("Music stopped and disc ejected"))
+        elseif is_music_disc(item_name) then
+            wielded_item:take_item()
+            puncher:set_wielded_item(wielded_item)
+            if start_jukebox(pos, item_name) then
+                local disc_data = music_discs[item_name]
+                core.chat_send_player(puncher:get_player_name(), S("Currently reading: ") .. disc_data.description)
+            else
+                puncher:get_inventory():add_item("main", item_name)
+                core.chat_send_player(puncher:get_player_name(), S("Error reading disk!"))
+            end
+        else
+            --core.chat_send_player(puncher:get_player_name(), S("Use a music disc to play music!"))
+        end
+    end,
+
+    on_destruct = function(pos)
+        stop_jukebox(pos)
+    end,
+
+    can_dig = function(pos)
+        local pos_hash = core.hash_node_position(pos)
+        return not active_jukeboxes[pos_hash]
+    end,
+})
+
+minetest.register_node("jukebox:console_dj", {
+	description = "Console DJ",
+	tiles = {
+		"console_dj_top.png",
+		"console_dj_side.png", "console_dj_side.png",
+		"console_dj_side.png", "console_dj_side.png", "console_dj_side.png",
+	},
+	groups = {choppy = 2, oddly_breakable_by_hand = 2},
+	paramtype2 = "facedir",
+	drawtype = "nodebox",
+	node_box = { type = "fixed", fixed = { {-0.5, -0.5, -0.5, 0.5, -0.25, 0.5} } },
+	selection_box = { type = "fixed", fixed = {-0.5, -0.5, -0.5, 0.5, -0.23, 0.5} },
+	collision_box = { type = "fixed", fixed = {-0.5, -0.5, -0.5, 0.5, -0.25, 0.5} },
+
+	on_construct = function(pos)
+		local meta = minetest.get_meta(pos)
+		local inv = meta:get_inventory()
+		inv:set_size("storage", 6 * 2)
+		meta:set_string("formspec",
+			"size[9,10.5]" ..
+			"bgcolor[#080808BB;true]" ..
+			"list[current_name;storage;1.5,0.2;6,6;]" ..
+			"list[current_player;main;0.5,6.5;8,4;]")
+	end,
+
+	on_rightclick = function(pos, node, clicker)
+		local meta = minetest.get_meta(pos)
+		local fs = meta:get_string("formspec")
+		minetest.show_formspec(clicker:get_player_name(), "jukebox:console_dj", fs)
+	end,
+
+	can_dig = function(pos, player)
+		local meta = minetest.get_meta(pos)
+		local inv = meta:get_inventory()
+		return inv:is_empty("storage")
+	end,
+})
+
+
+
+minetest.register_node("jukebox:bloc_dj", {
+    description = "Bloc DJ",
+    tiles = {
+        "bloc_dj.png"
+    },
+    groups = {choppy = 2, oddly_breakable_by_hand = 2},
+    paramtype2 = "facedir",
+    drawtype = "nodebox",
+    node_box = {
+        type = "fixed",
+        fixed = {
+            {-0.5, -0.5, -0.5, 0.5, 0.5, 0.5}, -- Hauteur 0.4 bloc
+        },
+    },
+    selection_box = {
+        type = "fixed",
+        fixed = {-0.5, -0.5, -0.5, 0.5, 0.5, 0.5},
+    },
+    collision_box = {
+        type = "fixed",
+        fixed = {-0.5, -0.5, -0.5, 0.5, 0.5, 0.5},
+    },
+})
+
+
+
+
+minetest.register_craft({
+    output = "jukebox:jukebox",
+    recipe = {
+        {"default:wood", "default:steel_ingot", "default:wood"},
+        {"default:wood", "default:diamond", "default:wood"},
+        {"default:wood", "default:wood", "default:wood"},
+    }
+})
+
+minetest.register_craft({
+    output = "jukebox:platine",
+    recipe = {
+        {"default:steel_ingot", "default:glass", "default:steel_ingot"},
+        {"default:wood", "default:diamond", "default:wood"},
+        {"default:wood", "default:wood", "default:wood"},
+    }
+})
+
+minetest.register_craft({
+    output = "jukebox:console",
+    recipe = {
+        {"default:steel_ingot", "default:glass", "default:steel_ingot"},
+        {"default:wood", "default:mese_crystal", "default:wood"},
+        {"default:wood", "default:wood", "default:wood"},
+    }
+})
+
+minetest.register_craft({
+    output = "jukebox:bloc_dj",
+    recipe = {
+        {"default:steel_ingot", "dye:black", "default:steel_ingot"},
+        {"dye:black", "default:mese_crystal", "dye:black"},
+        {"default:steel_ingot", "dye:black", "default:steel_ingot"},
+    }
+})
+
+minetest.register_craft({
+    output = "jukebox:platine_dj",
+    recipe = {
+        {"default:steel_ingot", "default:glass", "default:steel_ingot"},
+        {"default:steel_ingot", "default:diamond", "default:steel_ingot"},
+        {"jukebox:bloc_dj", "dye:black", "jukebox:bloc_dj"},
+    }
+})
+
+minetest.register_craft({
+    output = "jukebox:console_dj",
+    recipe = {
+        {"default:steel_ingot", "default:glass", "default:steel_ingot"},
+        {"default:steel_ingot", "default:mese_crystal", "default:steel_ingot"},
+        {"jukebox:bloc_dj", "dye:black", "jukebox:bloc_dj"},
+    }
+})
