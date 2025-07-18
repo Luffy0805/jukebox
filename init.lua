@@ -1,315 +1,485 @@
-local jukebox_sounds = {
-    S1 = "song1",
-    S2 = "song2",
-    S3 = "song3",
+local modname = core.get_current_modname()
+local S = core.get_translator(modname) -- Module permetant la traduction, seulement l'anglais et le francais sont dispo
+
+local config = {
+    particle_lifetime = 1.5, -- Temps de vie d'une particle avant quelle disparaisse
+    fade_in_time = 0, -- Diminution du son lors de la lecture (Plus on s'éloigne, plus le son diminue)
+    particle_spawn_interval = 0.75, -- Toute les 0.75 secondes une nouvelle particle apparaitront
+    max_hear_distance = 50, -- Distance maximale à laquelle les joueurs peuvent entendre la musique
+    sound_gain = 0.85, -- Volume du son
+    sound_check_interval = 1.0, -- Intervale de vérification de distance pour le son quand une musique est en cours
 }
 
-local Vinyles = {
-    ["jukebox:vinyle1"] = "S1;Azizam - EdSheeran",
-    ["jukebox:vinyle2"] = "S2;Turrican et Luffy",
-    ["jukebox:vinyle3"] = "S3;La Reine Amelaye",
-	["jukebox:vinyle4"] = "S4;Musique4",
-    ["jukebox:vinyle5"] = "S5;Musique5",
-    ["jukebox:vinyle6"] = "S6;Musique6",
-	["jukebox:vinyle7"] = "S7;Musique7",
-    -- Ajoute d’autres vinyles ici si besoin
+-- Probleme de dépense de fonction avec eject_disc et stop_jukebox (dépéndance circulaire)
+eject = {}
+
+
+local jukebox_music_particle_textures = {
+    "note1.png",
+    "note2.png",
+    "note3.png",
+    "note4.png",
+    "note5.png",
+    "note6.png",
+    "note7.png",
+    "note8.png",
+    "note9.png",
 }
 
-local jukebox_nodes = {}
+local last_texture_index = 0
 
-local function parse_prefix_title(str)
-    if not str then return nil, nil end
-    local prefix, title = str:match("^([^;]+);(.+)$")
-    if prefix and title then
-        return prefix, title
-    else
-        return nil, nil
-    end
+-- On définit les disques de musique disponibles
+-- Chaque disque a un nom, une description, un fichier audio, une durée, une couleur
+-- Attention les fichier audio doivent etre en MONO et non en STEREO!
+local music_discs = {
+    ["jukebox:vinyl1"] = {
+        name = "S1 Azizam",
+        description = "EdSheeran",
+        file = "song1",
+        duration = 165,
+        color = "#E91E63",
+        texture = "s1.png"
+    },
+    ["jukebox:vinyl2"] = {
+        name = "S2",
+        description = "Turrican et Luffy",
+        file = "song2",
+        duration = 219,
+        color = "#37da1e",
+		glow = 15,
+        texture = "s2.png"
+    },
+    ["jukebox:vinyl3"] = {
+        name = "S3",
+        description = "La Reine Amelaye",
+        file = "song3",
+        duration = 189,
+        color = "#fbf538",
+        texture = "s3.png"
+    }
+}
+
+local active_jukeboxes = {}
+
+-- On calcule la distance simple entre deux positions avec le théoreme de pythagore
+local function calculate_distance(pos1, pos2)
+    if not pos1 or not pos2 then return math.huge end
+    local dx = pos1.x - pos2.x
+    local dy = pos1.y - pos2.y
+    local dz = pos1.z - pos2.z
+    return math.sqrt(dx*dx + dy*dy + dz*dz)
 end
 
-local function update_infotext(pos)
-    local meta = minetest.get_meta(pos)
-    local Vinyle = meta:get_string("Vinyle") or ""
-    local infotext = "Jukebox"
+local function check_players_in_range(pos, max_distance)
+    local players_in_range = {}
+    local connected_players = core.get_connected_players()
 
-    local node = minetest.get_node(pos)
-    if node.name == "jukebox:platine" then
-        infotext = "Platine"
-    elseif node.name == "jukebox:jukebox" then
-        infotext = "Jukebox"
-    elseif node.name == "jukebox:console" then
-        infotext = "Console"
-    else
-        infotext = node.name
-    end
-
-    if Vinyle ~= "" then
-        infotext = infotext .. "\nVinyle inséré: " .. Vinyle
-    else
-        infotext = infotext .. "\nAucun Vinyle"
-    end
-
-    meta:set_string("infotext", infotext)
-end
-
-local function drop_Vinyle(pos, Vinyle_name)
-    local node = minetest.get_node(pos)
-    local drop_y = 1.5
-    if node.name == "jukebox:platine_dj" then
-        drop_y = 0.9  
-    end
-    local drop_pos = {x = pos.x, y = pos.y + drop_y, z = pos.z}
-    minetest.add_item(drop_pos, Vinyle_name)
-end
-
-local function stop_music(pos, puncher)
-    local meta = minetest.get_meta(pos)
-    local Vinyle = meta:get_string("Vinyle")
-    local handle = meta:get_int("sound_handle")
-
-    if handle and handle ~= 0 then
-        minetest.sound_stop(handle)
-        minetest.log("action", "[jukebox] Son stoppé à " .. minetest.pos_to_string(pos))
-    end
-
-    if puncher and puncher:is_player() and Vinyle ~= "" then
-        drop_Vinyle(pos, Vinyle)
-        minetest.log("action", "[jukebox] Vinyle droppé au joueur " .. puncher:get_player_name())
-    end
-
-    meta:set_string("Vinyle", "")
-    meta:set_int("sound_handle", 0)
-
-    local node = minetest.get_node(pos)
-    if node.name:find("jukebox:jukebox_active_") then
-        minetest.swap_node(pos, { name = "jukebox:jukebox", param2 = node.param2 })
-    elseif node.name == "jukebox:platine" then
-        -- Platine reste platine, pas de version active
-    elseif node.name == "jukebox:platine_dj" then
-        -- Platine DJ idem
-    else
-        minetest.swap_node(pos, { name = "jukebox:jukebox", param2 = node.param2 })
-    end
-
-    update_infotext(pos)
-end
-
-local playing_sounds = {}
-
-local function play_music(pos, Vinyle_item, sound_name, itemstack)
-    local meta = minetest.get_meta(pos)
-    local current_handle = meta:get_int("sound_handle")
-
-    -- Si un son est déjà en lecture, stoppe et drop l'ancien Vinyle avant d'en injecter un nouveau
-    if current_handle and current_handle ~= 0 then
-        minetest.sound_stop(current_handle)
-
-        local old_Vinyle = meta:get_string("Vinyle")
-        if old_Vinyle ~= "" and old_Vinyle ~= Vinyle_item then
-            drop_Vinyle(pos, old_Vinyle)
+    for _, player in pairs(connected_players) do
+        if player and player:is_player() then
+            local player_pos = player:get_pos()
+            if player_pos then
+                local distance = calculate_distance(pos, player_pos)
+                if distance <= max_distance then
+                    table.insert(players_in_range, player:get_player_name())
+                end
+            end
         end
     end
 
-    local gain = 0.5
-    local max_distance = 10
-    minetest.log("action", "[jukebox] Lecture son '" .. sound_name .. "' à " .. minetest.pos_to_string(pos))
+    return players_in_range
+end
 
-    local handle = minetest.sound_play(sound_name, {
-        pos = pos,
-        gain = gain,
-        max_hear_distance = max_distance,
-        loop = true,
+local function spawn_music_particles(pos, node, disc_name)
+    if not pos or not node then return end
+
+    local vx = (math.random() - 0.5) * 0.1
+    local vz = (math.random() - 0.5) * 0.1
+    local vy = 0.15 + math.random() * 0.1
+
+    local texture_index
+    repeat
+        texture_index = math.random(#jukebox_music_particle_textures)
+    until texture_index ~= last_texture_index or #jukebox_music_particle_textures == 1
+
+    last_texture_index = texture_index
+
+    local selected_texture = jukebox_music_particle_textures[texture_index]
+
+    core.add_particle({
+        pos = {
+            x = pos.x + (math.random() - 0.5) * 0.6,
+            y = pos.y + 0.9,
+            z = pos.z + (math.random() - 0.5) * 0.6
+        },
+        velocity = {x = vx, y = vy, z = vz},
+        acceleration = {x = 0, y = 1, z = 0},
+        expirationtime = config.particle_lifetime,
+        size = math.random(4, 5),
+        collisiondetection = true,
+        collision_removal = false,
+        texture = selected_texture,
+        glow = 1,
     })
-
-    if handle then
-        meta:set_string("Vinyle", Vinyle_item)
-        meta:set_int("sound_handle", handle)
-        playing_sounds[minetest.pos_to_string(pos)] = {handle = handle, pos = pos}
-
-        local node = minetest.get_node(pos)
-        local new_name = node.name
-        if node.name == "jukebox:jukebox" or node.name:find("^jukebox:jukebox_active_") then
-            new_name = jukebox_nodes[Vinyle_item] or "jukebox:jukebox"
-        end
-        minetest.swap_node(pos, {name = new_name, param2 = node.param2})
-        itemstack:take_item()
-        update_infotext(pos)
-
-        return itemstack
-    else
-        minetest.log("warning", "[jukebox] Erreur lors de la lecture du son : " .. sound_name)
-    end
 end
 
+-- Redémarre le son pour les joueurs dans la porté, en tenant compte du temps écoulé (music)
+local function restart_sound_for_players(pos, disc_data, players_in_range)
+    local pos_hash = core.hash_node_position(pos)
+    local jukebox_data = active_jukeboxes[pos_hash]
 
+    if not jukebox_data then
+        return false
+    end
 
-for Vinyle_name, pref_title in pairs(Vinyles) do
-    local prefix, title = parse_prefix_title(pref_title)
-    if prefix and title then
-        minetest.register_craftitem(Vinyle_name, {
-            description = "Vinyle : " .. title,
-            inventory_image = prefix:lower() .. ".png",
-            stack_max = 1,
+    if jukebox_data.sound then
+        core.sound_stop(jukebox_data.sound)
+    end
+
+    -- On determine le temps écoulé depuis le début de la musique
+    local elapsed_time = core.get_gametime() - jukebox_data.start_time
+    local remaining_time = disc_data.duration - elapsed_time -- Temps restant de la musique avec le elapsed_time
+
+    if remaining_time <= 0 then
+        stop_jukebox(pos)
+        return false
+    end
+
+    for _, player_name in pairs(players_in_range) do
+        local sound = core.sound_play(disc_data.file, {
+            pos = pos,
+            to_player = player_name,
+            max_hear_distance = config.max_hear_distance,
+            gain = config.sound_gain,
+            fade = config.fade_in_time,
+            start_time = elapsed_time,
+            loop = false
         })
 
-        local node_name = "jukebox:jukebox_active_" .. prefix
-        jukebox_nodes[Vinyle_name] = node_name
+        if sound and not jukebox_data.sound then
+            jukebox_data.sound = sound
+        end
+    end
 
-        if not minetest.registered_nodes[node_name] then
-            minetest.register_node(node_name, {
-                description = "Jukebox (Lecture) " .. title,
-                drawtype = "nodebox",
-                tiles = {
-                    "jukebox_top.png^" .. prefix:lower() .. ".png",
-                    "default_wood.png",
-                    "jukebox_side_lr.png",
-                    "jukebox_side_lr.png",
-                    "jukebox_side_fb.png",
-                    "jukebox_side_fb.png",
-                },
-                groups = {choppy = 2, oddly_breakable_by_hand = 2, not_in_creative_inventory = 1},
-                drop = "jukebox:jukebox",
-                paramtype2 = "facedir",
-                node_box = {
-                    type = "fixed",
-                    fixed = {
-                        {-0.5, -0.5, -0.5, 0.5, 0.5, 0.5}, -- hauteur 1 bloc
-                    },
-                },
-                selection_box = {
-                    type = "fixed",
-                    fixed = {-0.5, -0.5, -0.5, 0.5, 0.5, 0.5},
-                },
-                collision_box = {
-                    type = "fixed",
-                    fixed = {-0.5, -0.5, -0.5, 0.5, 0.5, 0.5},
-                },
+    return true
+end
 
-                on_rightclick = function(pos, node, clicker, itemstack)
-                    local held_item = itemstack:get_name()
-                    if Vinyles[held_item] then
-                        local prefix, _ = parse_prefix_title(Vinyles[held_item])
-                        local sound_name = jukebox_sounds[prefix]
-                        if sound_name then
-                            return play_music(pos, held_item, sound_name, itemstack)
-                        end
-                    end
-                end,
+local function update_sound(pos, disc_data)
+    local pos_hash = core.hash_node_position(pos)
+    local jukebox_data = active_jukeboxes[pos_hash]
 
-                on_punch = function(pos, node, puncher)
-                    stop_music(pos, puncher)
-                end,
-            })
+    if not jukebox_data then
+        return
+    end
+
+    local players_in_range = check_players_in_range(pos, config.max_hear_distance) -- On regarde les joueurs dans la porter 
+
+    if #players_in_range == 0 then
+        if jukebox_data.sound then
+            core.sound_stop(jukebox_data.sound)
+            jukebox_data.sound = nil
         end
     else
-        minetest.log("warning", "[jukebox] Format invalide pour le Vinyle " .. Vinyle_name)
+        if not jukebox_data.sound then
+            restart_sound_for_players(pos, disc_data, players_in_range)
+        end
+    end
+
+    jukebox_data.distance_check_timer = core.after(config.sound_check_interval, function()
+        update_sound(pos, disc_data)
+    end)
+end
+
+local function update_jukebox_infotext(pos, disc_name)
+    local meta = core.get_meta(pos)
+	local node = minetest.get_node(pos)
+    local block_name = node.name
+
+    if disc_name then
+        local disc_data = music_discs[disc_name]
+        if disc_data then
+            local duration_minutes = math.floor(disc_data.duration / 60)
+            local duration_seconds = disc_data.duration % 60
+            local duration_str = string.format("%d:%02d", duration_minutes, duration_seconds)
+
+            local infotext = S("Currently Playing: ") .. disc_data.name ..
+                           "\n" .. S("Artist: ") .. disc_data.description ..
+                           "\n" .. S("Duration: ") .. duration_str
+            meta:set_string("infotext", infotext)
+        end
+    else
+        
+		if block_name == "jukebox:jukebox" then
+			meta:set_string("infotext", S("Jukebox") .. "\n" .. S("Punch with a music disc to play"))
+		end
+		if block_name == "jukebox:platine" then
+			meta:set_string("infotext", S("Platine") .. "\n" .. S("Punch with a music disc to play"))
+		end
+		if block_name == "jukebox:platine_dj" then
+			meta:set_string("infotext", S("Platine DJ") .. "\n" .. S("Punch with a music disc to play"))
+		end		
     end
 end
 
--- Fonction pour formspec de la console DJ
-local function get_console_formspec(pos)
-	local spos = minetest.pos_to_string(pos)
-	return 
-		"size[9,10.5]" ..
-		default.gui_bg ..
-		default.gui_bg_img ..
-		default.gui_slots ..
-		"background[9,10.5;0,0;console_dj_top.png;false]" ..
-		"label[2.5,0;Console DJ]" ..
-		"list[nodemeta:" .. spos .. ";storage;3,1;3,3;]" ..
-		"list[current_player;main;0.5,6.5;8,4;]" ..
-		"listring[nodemeta:" .. spos .. ";storage]" ..
-		"listring[current_player;main]" ..
-		default.get_hotbar_bg(0.5, 6.5)
+local function stop_jukebox(pos, should_eject)
+    if not pos then return end
+
+    local pos_hash = core.hash_node_position(pos)
+    local jukebox_data = active_jukeboxes[pos_hash]
+
+    if jukebox_data then
+        if jukebox_data.sound then
+            core.sound_stop(jukebox_data.sound)
+        end
+
+        if jukebox_data.particle_timer then
+            jukebox_data.particle_timer:cancel()
+        end
+        if jukebox_data.music_timer then
+            jukebox_data.music_timer:cancel()
+        end
+        if jukebox_data.distance_check_timer then
+            jukebox_data.distance_check_timer:cancel()
+        end
+
+        if should_eject and jukebox_data.disc_name then
+            eject.eject_disc(pos, jukebox_data.disc_name)
+        end
+
+        update_jukebox_infotext(pos, nil)
+        active_jukeboxes[pos_hash] = nil
+
+    end
 end
 
+-- On expulse le disque proche du block de jukebox en hauteur
+-- On ajoute une petite vélocité aléatoire pour donné un effet de lancement
+-- Et on stop la musique en cours s'il y en avait une
+function eject.eject_disc(pos, disc_name)
+    if not pos or not disc_name then return end
 
+    local node = core.get_node(pos)
+    local block_name = node.name
 
-minetest.register_node("jukebox:jukebox", {
-    description = "Jukebox",
-    drawtype = "nodebox",
+    local eject_height = 0.5 -- Hauteur par défaut
+
+    if block_name == "jukebox:platine_dj" then
+        eject_height = -0.2
+    end
+
+    local eject_pos = {x = pos.x, y = pos.y + eject_height, z = pos.z}
+
+    local obj = core.add_item(eject_pos, disc_name)
+    if obj then
+        obj:set_velocity({
+            x = (math.random() - 0.5) * 2,
+            y = 3,
+            z = (math.random() - 0.5) * 2
+        })
+    end
+
+    stop_jukebox(pos)
+end
+
+local function start_jukebox(pos, disc_name)
+    if not pos or not disc_name then return false end
+
+    local pos_hash = core.hash_node_position(pos)
+    local disc_data = music_discs[disc_name]
+
+    if not disc_data then
+        core.log("error", S("Disk not found: ") .. tostring(disc_name))
+        return false
+    end
+
+    stop_jukebox(pos)
+
+    local players_in_range = check_players_in_range(pos, config.max_hear_distance)
+
+    local sound = nil
+
+    if #players_in_range > 0 then
+        sound = core.sound_play(disc_data.file, {
+            pos = pos,
+            max_hear_distance = config.max_hear_distance,
+            gain = config.sound_gain,
+            fade = config.fade_in_time,
+            loop = false
+        })
+
+        if not sound then
+            core.log("error", S("Unable to play sound: ") .. disc_data.file)
+            return false
+        end
+    end
+
+    -- Eh oui une fonction dans une fonction, c'est pas beau mais sa marche
+    -- On crée une boucle pour faire apparaitre les particles de musique
+    local function spawn_particles_loop()
+        local current_data = active_jukeboxes[pos_hash]
+        if current_data then
+            spawn_music_particles(pos, core.get_node(pos), disc_name)
+            current_data.particle_timer = core.after(config.particle_spawn_interval, spawn_particles_loop)
+        end
+    end
+
+    local music_timer = core.after(disc_data.duration, function()
+        stop_jukebox(pos, true)  -- true = éjecter le disque
+    end)
+
+    active_jukeboxes[pos_hash] = {
+        disc_name = disc_name,
+        sound = sound,
+        particle_timer = nil,
+        music_timer = music_timer,
+        distance_check_timer = nil,
+        start_time = core.get_gametime()
+    }
+
+    update_jukebox_infotext(pos, disc_name)
+    spawn_particles_loop()
+    update_sound(pos, disc_data)
+
+    return true
+end
+
+-- Verification si l'item est belle et bien un disque de musique
+-- On regarde si le nom de l'item est dans la liste des disques de musique si non alors ce n'en est pas un
+local function is_music_disc(item_name)
+    return music_discs[item_name] ~= nil
+end
+
+core.register_node("jukebox:jukebox", {
+    description = S("Jukebox"),
     tiles = {
-        "jukebox_top.png",
-        "default_wood.png",
-        "jukebox_side_lr.png",
-        "jukebox_side_lr.png",
-        "jukebox_side_fb.png",
-        "jukebox_side_fb.png",
+        "jukebox_top.png", "default_wood.png", "jukebox_side_lr.png",
+        "jukebox_side_lr.png", "jukebox_side_fb.png", "jukebox_side_fb.png",
     },
-    groups = {choppy = 2, oddly_breakable_by_hand = 2},
     paramtype2 = "facedir",
-    node_box = {
-        type = "fixed",
-        fixed = {
-            {-0.5, -0.5, -0.5, 0.5, 0.5, 0.5}, -- hauteur 1 bloc
-        },
-    },
-    selection_box = {
-        type = "fixed",
-        fixed = {-0.5, -0.5, -0.5, 0.5, 0.5, 0.5},
-    },
-    collision_box = {
-        type = "fixed",
-        fixed = {-0.5, -0.5, -0.5, 0.5, 0.5, 0.5},
-    },
+    groups = {choppy = 2, oddly_breakable_by_hand = 2},
+    sounds = default.node_sound_wood_defaults(),
+    on_punch = function(pos, node, puncher, pointed_thing)
+        if not puncher or not puncher:is_player() then
+            return
+        end
 
-    on_rightclick = function(pos, node, clicker, itemstack)
-        local held_item = itemstack:get_name()
-        if Vinyles[held_item] then
-            local prefix, _ = parse_prefix_title(Vinyles[held_item])
-            local sound_name = jukebox_sounds[prefix]
-            if sound_name then
-                return play_music(pos, held_item, sound_name, itemstack)
+        local pos_hash = core.hash_node_position(pos)
+        local jukebox_data = active_jukeboxes[pos_hash]
+        local wielded_item = puncher:get_wielded_item()
+        local item_name = wielded_item:get_name()
+
+        if jukebox_data then
+            eject.eject_disc(pos, jukebox_data.disc_name)
+            --core.chat_send_player(puncher:get_player_name(), S("Music stopped and disc ejected"))
+        elseif is_music_disc(item_name) then
+            wielded_item:take_item()
+            puncher:set_wielded_item(wielded_item)
+            if start_jukebox(pos, item_name) then
+                local disc_data = music_discs[item_name]
+                core.chat_send_player(puncher:get_player_name(), S("Currently reading: ") .. disc_data.description)
+            else
+                puncher:get_inventory():add_item("main", item_name)
+                core.chat_send_player(puncher:get_player_name(), S("Error reading disk!"))
             end
+        else
+            --core.chat_send_player(puncher:get_player_name(), S("Use a music disc to play music!"))
         end
     end,
-
-    on_punch = function(pos, node, puncher)
-        stop_music(pos, puncher)
+    on_destruct = function(pos)
+        stop_jukebox(pos)
     end,
+    can_dig = function(pos)
+        local pos_hash = core.hash_node_position(pos)
+        return not active_jukeboxes[pos_hash]
+    end
 })
 
-minetest.register_node("jukebox:platine", {
-    description = "Platine",
-    tiles = {
-        "platine_top.png",
-        "platine_side.png",
-        "platine_side.png",
-        "platine_side.png",
-        "platine_side.png",
-        "platine_side_front.png",
-    },
-    groups = {choppy = 2, oddly_breakable_by_hand = 2},
-    paramtype2 = "facedir",
-    drawtype = "nodebox",
-    node_box = {
-        type = "fixed",
-        fixed = {
-            {-0.5, -0.5, -0.5, 0.5, 0.5, 0.5}, -- hauteur 1 bloc
-        },
-    },
-    selection_box = {
-        type = "fixed",
-        fixed = {-0.5, -0.5, -0.5, 0.5, 0.5, 0.5},
-    },
-    collision_box = {
-        type = "fixed",
-        fixed = {-0.5, -0.5, -0.5, 0.5, 0.5, 0.5},
-    },
+-- Definition des disques de musiques
+for disc_name, disc_data in pairs(music_discs) do
 
-    on_rightclick = function(pos, node, clicker, itemstack)
-        local held_item = itemstack:get_name()
-        if Vinyles[held_item] then
-            local prefix, _ = parse_prefix_title(Vinyles[held_item])
-            local sound_name = jukebox_sounds[prefix]
-            if sound_name then
-                return play_music(pos, held_item, sound_name, itemstack)
+
+    core.register_craftitem(disc_name, {
+        description = "Disque Musical - " .. disc_data.name .. "\n" .. 
+                     core.colorize("#888888", disc_data.description) .. "\n" ..
+                     core.colorize(disc_data.color, "Durée: " .. 
+                     math.floor(disc_data.duration / 60) .. ":" .. 
+                     string.format("%02d", disc_data.duration % 60)),
+        inventory_image = disc_data.texture or "empy_disc.png",
+        stack_max = 1,
+        groups = {music_disc = 1}
+    })
+
+
+end
+
+-- Quand le serveur shutdown alors on ejecte tout les disques en cour de lecture
+--[[
+core.register_on_shutdown(function()
+    for pos_hash, jukebox_data in pairs(active_jukeboxes) do
+        if jukebox_data and jukebox_data.disc_name then
+            local pos = core.get_position_from_hash(pos_hash)
+            if pos then
+                eject.eject_disc(pos, jukebox_data.disc_name)
             end
+        end
+    end
+end)
+]]--
+
+core.register_on_mods_loaded(function()
+    for pos_hash, jukebox_data in pairs(active_jukeboxes) do
+        if jukebox_data and jukebox_data.disc_name then
+            local pos = core.get_position_from_hash(pos_hash)
+            if pos then
+                start_jukebox(pos, jukebox_data.disc_name)
+            end
+        end
+    end
+end)
+
+core.register_node("jukebox:platine", {
+    description = S("Platine"),
+    tiles = {
+        "platine_top.png", "default_wood.png", "platine_side.png",
+        "platine_side.png", "platine_side.png", "platine_side_front.png",
+    },
+    paramtype2 = "facedir",
+    groups = {choppy = 2, oddly_breakable_by_hand = 2},
+    sounds = default.node_sound_wood_defaults(),
+    on_punch = function(pos, node, puncher, pointed_thing)
+        if not puncher or not puncher:is_player() then
+            return
+        end
+
+        local pos_hash = core.hash_node_position(pos)
+        local jukebox_data = active_jukeboxes[pos_hash]
+        local wielded_item = puncher:get_wielded_item()
+        local item_name = wielded_item:get_name()
+
+        if jukebox_data then
+            eject.eject_disc(pos, jukebox_data.disc_name)
+            --core.chat_send_player(puncher:get_player_name(), S("Music stopped and disc ejected"))
+        elseif is_music_disc(item_name) then
+            wielded_item:take_item()
+            puncher:set_wielded_item(wielded_item)
+            if start_jukebox(pos, item_name) then
+                local disc_data = music_discs[item_name]
+                core.chat_send_player(puncher:get_player_name(), S("Currently reading: ") .. disc_data.description)
+            else
+                puncher:get_inventory():add_item("main", item_name)
+                core.chat_send_player(puncher:get_player_name(), S("Error reading disk!"))
+            end
+        else
+            --core.chat_send_player(puncher:get_player_name(), S("Use a music disc to play music!"))
         end
     end,
 
-    on_punch = function(pos, node, puncher)
-        stop_music(pos, puncher)
+    on_destruct = function(pos)
+        stop_jukebox(pos)
+    end,
+
+    can_dig = function(pos)
+        local pos_hash = core.hash_node_position(pos)
+        return not active_jukeboxes[pos_hash]
     end,
 })
 
@@ -360,9 +530,6 @@ minetest.register_node("jukebox:console", {
 	end,
 })
 
-
-
-
 minetest.register_node("jukebox:platine_dj", {
     description = "Platine DJ",
     tiles = {
@@ -391,19 +558,41 @@ minetest.register_node("jukebox:platine_dj", {
         fixed = {-0.5, -0.5, -0.5, 0.5, -0.25, 0.5},
     },
 
-    on_rightclick = function(pos, node, clicker, itemstack)
-        local held_item = itemstack:get_name()
-        if Vinyles[held_item] then
-            local prefix, _ = parse_prefix_title(Vinyles[held_item])
-            local sound_name = jukebox_sounds[prefix]
-            if sound_name then
-                return play_music(pos, held_item, sound_name, itemstack)
+    on_punch = function(pos, node, puncher, pointed_thing)
+        if not puncher or not puncher:is_player() then
+            return
+        end
+
+        local pos_hash = core.hash_node_position(pos)
+        local jukebox_data = active_jukeboxes[pos_hash]
+        local wielded_item = puncher:get_wielded_item()
+        local item_name = wielded_item:get_name()
+
+        if jukebox_data then
+            eject.eject_disc(pos, jukebox_data.disc_name)
+            --core.chat_send_player(puncher:get_player_name(), S("Music stopped and disc ejected"))
+        elseif is_music_disc(item_name) then
+            wielded_item:take_item()
+            puncher:set_wielded_item(wielded_item)
+            if start_jukebox(pos, item_name) then
+                local disc_data = music_discs[item_name]
+                core.chat_send_player(puncher:get_player_name(), S("Currently reading: ") .. disc_data.description)
+            else
+                puncher:get_inventory():add_item("main", item_name)
+                core.chat_send_player(puncher:get_player_name(), S("Error reading disk!"))
             end
+        else
+            --core.chat_send_player(puncher:get_player_name(), S("Use a music disc to play music!"))
         end
     end,
 
-    on_punch = function(pos, node, puncher)
-        stop_music(pos, puncher)
+    on_destruct = function(pos)
+        stop_jukebox(pos)
+    end,
+
+    can_dig = function(pos)
+        local pos_hash = core.hash_node_position(pos)
+        return not active_jukeboxes[pos_hash]
     end,
 })
 
@@ -471,6 +660,9 @@ minetest.register_node("jukebox:bloc_dj", {
     },
 })
 
+
+
+
 minetest.register_craft({
     output = "jukebox:jukebox",
     recipe = {
@@ -523,169 +715,4 @@ minetest.register_craft({
         {"default:steel_ingot", "default:mese_crystal", "default:steel_ingot"},
         {"jukebox:bloc_dj", "dye:black", "jukebox:bloc_dj"},
     }
-})
-
-local vinyle_crafts = {
-    ["jukebox:vinyle1"] = "dye:red",
-    ["jukebox:vinyle2"] = "dye:green",
-    ["jukebox:vinyle3"] = "dye:yellow",
-    ["jukebox:vinyle4"] = "dye:white",
-    ["jukebox:vinyle5"] = "dye:blue",
-    ["jukebox:vinyle6"] = "dye:cyan",
-    ["jukebox:vinyle7"] = "dye:black",
-}
-
-local plastic_item = "default:paper"
-
-if minetest.get_modpath("basic_materials") then
-    plastic_item = "basic_materials:plastic_sheet"
-end
-
-
-for vinyle_name, dye in pairs(vinyle_crafts) do
-    minetest.register_craft({
-        output = vinyle_name,
-        recipe = {
-            {plastic_item,"dye:black", plastic_item},
-			{plastic_item, dye, plastic_item},
-			{plastic_item, "dye:black", plastic_item}
-        }
-    })
-end
-
-
-local function get_all_jukebox_nodes()
-    local nodes = {}
-    for nodename, def in pairs(minetest.registered_nodes) do
-        if nodename:sub(1,8) == "jukebox:" then
-            table.insert(nodes, nodename)
-        end
-    end
-    return nodes
-end
-
-minetest.register_lbm({
-    name = "jukebox:resume_music",
-    nodenames = get_all_jukebox_nodes(),
-    run_at_every_load = true,
-    action = function(pos, node)
-        local meta = minetest.get_meta(pos)
-        local Vinyle = meta:get_string("Vinyle")
-        if Vinyle == nil or Vinyle == "" then
-            return -- Pas de Vinyle, rien à faire
-        end
-
-        local prefix, _ = parse_prefix_title(Vinyles[Vinyle] or "")
-        if not prefix then
-            return -- Vinyle mal formaté ou inconnu
-        end
-
-        local sound_name = jukebox_sounds[prefix]
-        if not sound_name then
-            return -- Son non trouvé pour ce Vinyle
-        end
-
-        local handle = meta:get_int("sound_handle")
-        if handle and handle ~= 0 then
-            minetest.sound_stop(handle) -- Au cas où il y aurait un son déjà en cours
-        end
-
-        local new_handle = minetest.sound_play(sound_name, {
-            pos = pos,
-            gain = 0.5,
-            max_hear_distance = 10,
-            loop = true,
-        })
-
-        if new_handle then
-            meta:set_int("sound_handle", new_handle)
-            update_infotext(pos)
-        end
-    end,
-})
-
-local last_texture_index = nil
-
-local function spawn_music_particles(pos, node)
-    local vx = math.random(-0.1, 0.1) / 2 -- variation horizontale
-    local vz = math.random(-0.1, 0.1) / 2
-    local vy = 0.2  -- légère montée
-
-    -- Ajuster la hauteur de spawn selon le node
-    local base_y = 0.7
-    if node.name == "jukebox:platine_dj" then
-        base_y = 0.1
-    end
-
-    local textures = {"note1.png", "note2.png", "note3.png", "note4.png", "note5.png", "note6.png", "note7.png", "note8.png", "note9.png"}
-    
-	local texture_index
-    repeat
-        texture_index = math.random(#textures)
-    until texture_index ~= last_texture_index
-
-    last_texture_index = texture_index
-    local texture = textures[texture_index]
-
-
-    minetest.add_particle({
-        pos = {
-            x = pos.x + math.random() * 0.8 - 0.2,
-            y = pos.y + base_y,
-            z = pos.z + math.random() * 0.8 - 0.2,
-        },
-        velocity = {x = vx, y = vy, z = vz},
-        acceleration = {x = 0, y = 1, z = 0},
-        expirationtime = 1.5,
-        size = 5,
-        collisiondetection = true,
-        collision_removal = false,
-        texture = texture,
-        glow = 15,
-    })
-end
-
-minetest.register_abm({
-    label = "Jukebox music particles",
-    nodenames = get_all_jukebox_nodes(),
-    interval = 0.3,
-    chance = 1,
-    action = function(pos, node)
-        local meta = minetest.get_meta(pos)
-        local Vinyle = meta:get_string("Vinyle")
-        local handle = meta:get_int("sound_handle")
-        if Vinyle ~= "" and handle and handle ~= 0 then
-            spawn_music_particles(pos, node)
-        end
-    end,
-})
-
-local playing_sounds = {}
-
--- Commande pour stopper toutes les musiques
-minetest.register_chatcommand("jukebox_stop_music", {
-    description = "Arrête toutes les musiques en cours",
-    privs = {interact = true},
-    func = function(name)
-        for key, entry in pairs(playing_sounds) do
-            if entry.handle and entry.handle ~= 0 then
-                minetest.sound_stop(entry.handle)
-                local pos = entry.pos
-                if pos then
-                    local meta = minetest.get_meta(pos)
-                    local Vinyle = meta:get_string("Vinyle")
-                    if Vinyle and Vinyle ~= "" then
-                        drop_Vinyle(pos, Vinyle)
-                    end
-                    meta:set_string("Vinyle", "")
-                    meta:set_int("sound_handle", 0)
-                    local node = minetest.get_node(pos)
-                    minetest.swap_node(pos, {name = "jukebox:jukebox", param2 = node.param2})
-                    update_infotext(pos)
-                end
-            end
-        end
-        playing_sounds = {}
-        return true, "Toutes les musiques ont été arrêtées."
-    end,
 })
