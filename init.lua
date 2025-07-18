@@ -717,29 +717,16 @@ minetest.register_craft({
     }
 })
 
-local vinyle_crafts = {
-    ["jukebox:vinyl1"] = "dye:red",
-    ["jukebox:vinyl2"] = "dye:green",
-    ["jukebox:vinyl3"] = "dye:yellow",
-    ["jukebox:vinyl4"] = "dye:white",
-    ["jukebox:vinyl5"] = "dye:blue",
-    ["jukebox:vinyl6"] = "dye:cyan",
-    ["jukebox:vinyl7"] = "dye:black",
-}
+local plastic = core.get_modpath("basic_materials") and "basic_materials:plastic_sheet" or "default:paper"
+local dyes = {"red", "green", "yellow", "white", "blue", "cyan", "black"}
 
-local plastic_item = "default:paper"
-
-if minetest.get_modpath("basic_materials") then
-    plastic_item = "basic_materials:plastic_sheet"
-end
-
-for vinyle_name, dye in pairs(vinyle_crafts) do
-    minetest.register_craft({
-        output = vinyle_name,
+for i = 1, 7 do
+    core.register_craft({
+        output = "jukebox:vinyl" .. i,
         recipe = {
-            {plastic_item,"dye:black", plastic_item},
-			{plastic_item, dye, plastic_item},
-			{plastic_item, "dye:black", plastic_item}
+            {plastic, "dye:black", plastic},
+            {plastic, "dye:" .. dyes[i], plastic},
+            {plastic, "dye:black", plastic}
         }
     })
 end
