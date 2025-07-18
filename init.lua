@@ -716,3 +716,30 @@ minetest.register_craft({
         {"jukebox:bloc_dj", "dye:black", "jukebox:bloc_dj"},
     }
 })
+
+local vinyle_crafts = {
+    ["jukebox:vinyl1"] = "dye:red",
+    ["jukebox:vinyl2"] = "dye:green",
+    ["jukebox:vinyl3"] = "dye:yellow",
+    ["jukebox:vinyl4"] = "dye:white",
+    ["jukebox:vinyl5"] = "dye:blue",
+    ["jukebox:vinyl6"] = "dye:cyan",
+    ["jukebox:vinyl7"] = "dye:black",
+}
+
+local plastic_item = "default:paper"
+
+if minetest.get_modpath("basic_materials") then
+    plastic_item = "basic_materials:plastic_sheet"
+end
+
+for vinyle_name, dye in pairs(vinyle_crafts) do
+    minetest.register_craft({
+        output = vinyle_name,
+        recipe = {
+            {plastic_item,"dye:black", plastic_item},
+			{plastic_item, dye, plastic_item},
+			{plastic_item, "dye:black", plastic_item}
+        }
+    })
+end
