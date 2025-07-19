@@ -136,5 +136,6 @@ mods/
     └── locale/
         ├── jukebox.en.tr
         └── jukebox.fr.tr
+```
 
 ## End.
