@@ -717,8 +717,10 @@ minetest.register_craft({
     }
 })
 
-local plastic = core.get_modpath("basic_materials") and "basic_materials:plastic_sheet" or "default:paper"
+          -- (vinyl1, vinyl2,  vinyl3,   vinyl4,  vinyl5, vinyl5, vinyl7) 
+		  -- 	↓       ↓        ↓         ↓        ↓       ↓       ↓   
 local dyes = {"red", "green", "yellow", "white", "blue", "cyan", "black"}
+local plastic = core.get_modpath("basic_materials") and "basic_materials:plastic_sheet" or "default:paper"
 
 for i = 1, 7 do
     core.register_craft({
