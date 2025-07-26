@@ -32,7 +32,7 @@ local last_texture_index = 0
 -- Chaque disque a un nom, une description, un fichier audio, une durée, une couleur
 -- Attention les fichier audio doivent etre en MONO et non en STEREO!
 local music_discs = {
-    ["jukebox:vinyl1"] = {
+    ["jukebox_main:vinyl1"] = {
         name = "S1 Azizam",
         description = "EdSheeran",
         file = "song1",
@@ -40,7 +40,7 @@ local music_discs = {
         color = "#E91E63",
         texture = "s1.png"
     },
-    ["jukebox:vinyl2"] = {
+    ["jukebox_main:vinyl2"] = {
         name = "S2",
         description = "Turrican et Luffy",
         file = "song2",
@@ -49,7 +49,7 @@ local music_discs = {
 		glow = 15,
         texture = "s2.png"
     },
-    ["jukebox:vinyl3"] = {
+    ["jukebox_main:vinyl3"] = {
         name = "S3",
         description = "La Reine Amelaye",
         file = "song3",
@@ -208,13 +208,13 @@ local function update_jukebox_infotext(pos, disc_name)
         end
     else
         
-		if block_name == "jukebox:jukebox" then
+		if block_name == "jukebox_main:jukebox" then
 			meta:set_string("infotext", S("Jukebox") .. "\n" .. S("Punch with a music disc to play"))
 		end
-		if block_name == "jukebox:platine" then
+		if block_name == "jukebox_main:platine" then
 			meta:set_string("infotext", S("Platine") .. "\n" .. S("Punch with a music disc to play"))
 		end
-		if block_name == "jukebox:platine_dj" then
+		if block_name == "jukebox_main:platine_dj" then
 			meta:set_string("infotext", S("Platine DJ") .. "\n" .. S("Punch with a music disc to play"))
 		end		
     end
@@ -262,7 +262,7 @@ function eject.eject_disc(pos, disc_name)
 
     local eject_height = 0.5 -- Hauteur par défaut
 
-    if block_name == "jukebox:platine_dj" then
+    if block_name == "jukebox_main:platine_dj" then
         eject_height = -0.2
     end
 
@@ -348,7 +348,7 @@ local function is_music_disc(item_name)
     return music_discs[item_name] ~= nil
 end
 
-core.register_node("jukebox:jukebox", {
+core.register_node("jukebox_main:jukebox", {
     description = S("Jukebox"),
     tiles = {
         "jukebox_top.png", "default_wood.png", "jukebox_side_lr.png",
@@ -436,7 +436,7 @@ core.register_on_mods_loaded(function()
     end
 end)
 
-core.register_node("jukebox:platine", {
+core.register_node("jukebox_main:platine", {
     description = S("Platine"),
     tiles = {
         "platine_top.png", "default_wood.png", "platine_side.png",
@@ -483,7 +483,7 @@ core.register_node("jukebox:platine", {
     end,
 })
 
-minetest.register_node("jukebox:console", {
+minetest.register_node("jukebox_main:console", {
 	description = "Console",
 	tiles = {
 		"console_top.png",
@@ -520,7 +520,7 @@ minetest.register_node("jukebox:console", {
 	on_rightclick = function(pos, node, clicker)
 		local meta = minetest.get_meta(pos)
 		local fs = meta:get_string("formspec")
-		minetest.show_formspec(clicker:get_player_name(), "jukebox:console", fs)
+		minetest.show_formspec(clicker:get_player_name(), "jukebox_main:console", fs)
 	end,
 
 	can_dig = function(pos, player)
@@ -530,7 +530,7 @@ minetest.register_node("jukebox:console", {
 	end,
 })
 
-minetest.register_node("jukebox:platine_dj", {
+minetest.register_node("jukebox_main:platine_dj", {
     description = "Platine DJ",
     tiles = {
         "platine_dj_top.png",
@@ -596,7 +596,7 @@ minetest.register_node("jukebox:platine_dj", {
     end,
 })
 
-minetest.register_node("jukebox:console_dj", {
+minetest.register_node("jukebox_main:console_dj", {
 	description = "Console DJ",
 	tiles = {
 		"console_dj_top.png",
@@ -624,7 +624,7 @@ minetest.register_node("jukebox:console_dj", {
 	on_rightclick = function(pos, node, clicker)
 		local meta = minetest.get_meta(pos)
 		local fs = meta:get_string("formspec")
-		minetest.show_formspec(clicker:get_player_name(), "jukebox:console_dj", fs)
+		minetest.show_formspec(clicker:get_player_name(), "jukebox_main:console_dj", fs)
 	end,
 
 	can_dig = function(pos, player)
@@ -636,7 +636,7 @@ minetest.register_node("jukebox:console_dj", {
 
 
 
-minetest.register_node("jukebox:bloc_dj", {
+minetest.register_node("jukebox_main:bloc_dj", {
     description = "Bloc DJ",
     tiles = {
         "bloc_dj.png"
@@ -664,7 +664,7 @@ minetest.register_node("jukebox:bloc_dj", {
 
 
 minetest.register_craft({
-    output = "jukebox:jukebox",
+    output = "jukebox_main:jukebox",
     recipe = {
         {"default:wood", "default:steel_ingot", "default:wood"},
         {"default:wood", "default:diamond", "default:wood"},
@@ -673,7 +673,7 @@ minetest.register_craft({
 })
 
 minetest.register_craft({
-    output = "jukebox:platine",
+    output = "jukebox_main:platine",
     recipe = {
         {"default:steel_ingot", "default:glass", "default:steel_ingot"},
         {"default:wood", "default:diamond", "default:wood"},
@@ -682,7 +682,7 @@ minetest.register_craft({
 })
 
 minetest.register_craft({
-    output = "jukebox:console",
+    output = "jukebox_main:console",
     recipe = {
         {"default:steel_ingot", "default:glass", "default:steel_ingot"},
         {"default:wood", "default:mese_crystal", "default:wood"},
@@ -691,7 +691,7 @@ minetest.register_craft({
 })
 
 minetest.register_craft({
-    output = "jukebox:bloc_dj",
+    output = "jukebox_main:bloc_dj",
     recipe = {
         {"default:steel_ingot", "dye:black", "default:steel_ingot"},
         {"dye:black", "default:mese_crystal", "dye:black"},
@@ -700,20 +700,20 @@ minetest.register_craft({
 })
 
 minetest.register_craft({
-    output = "jukebox:platine_dj",
+    output = "jukebox_main:platine_dj",
     recipe = {
         {"default:steel_ingot", "default:glass", "default:steel_ingot"},
         {"default:steel_ingot", "default:diamond", "default:steel_ingot"},
-        {"jukebox:bloc_dj", "dye:black", "jukebox:bloc_dj"},
+        {"jukebox_main:bloc_dj", "dye:black", "jukebox_main:bloc_dj"},
     }
 })
 
 minetest.register_craft({
-    output = "jukebox:console_dj",
+    output = "jukebox_main:console_dj",
     recipe = {
         {"default:steel_ingot", "default:glass", "default:steel_ingot"},
         {"default:steel_ingot", "default:mese_crystal", "default:steel_ingot"},
-        {"jukebox:bloc_dj", "dye:black", "jukebox:bloc_dj"},
+        {"jukebox_main:bloc_dj", "dye:black", "jukebox_main:bloc_dj"},
     }
 })
 
@@ -724,7 +724,7 @@ local plastic = core.get_modpath("basic_materials") and "basic_materials:plastic
 
 for i = 1, 7 do
     core.register_craft({
-        output = "jukebox:vinyl" .. i,
+        output = "jukebox_main:vinyl" .. i,
         recipe = {
             {plastic, "dye:black", plastic},
             {plastic, "dye:" .. dyes[i], plastic},
