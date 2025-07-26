@@ -1,0 +1,12 @@
+# textdomain:jukebox_main
+
+Currently reading: =Derzeit wird gelesen:
+Artist: =Künstler:
+Duration: =Dauer:
+Punch with a music disc to play=Mit einer Schallplatte schlagen, um zu spielen
+Disk not found: =Schallplatte nicht gefunden:
+Unable to play sound: =Tonwiedergabe nicht möglich:
+Currently Playing: =Wird gerade abgespielt:
+Currently reading: =Wird gelesen:
+Error reading disk!=Fehler beim Lesen der Schallplatte!
+Minetest mod adding jukeboxes, turntables, and consoles with custom vinyls to listen to music.=Minetest-Mod, der Jukeboxen, Plattenspieler und Konsolen mit benutzerdefinierten Schallplatten zum Musikhören hinzufügt.
