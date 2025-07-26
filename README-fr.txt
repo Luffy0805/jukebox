@@ -2,7 +2,7 @@
 
 Par Luffy0805
 Crédits : turrican
-Version : 1.0.0
+Version : 1.0.1
 Licence : MIT
 
 ---
