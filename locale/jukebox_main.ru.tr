@@ -1,0 +1,12 @@
+# textdomain:jukebox_main
+
+Currently reading: =Сейчас читается:
+Artist: =Исполнитель:
+Duration: =Длительность:
+Punch with a music disc to play=Ударьте диском, чтобы играть
+Disk not found: =Диск не найден:
+Unable to play sound: =Невозможно воспроизвести звук:
+Currently Playing: =Сейчас играет:
+Currently reading: =Чтение:
+Error reading disk!=Ошибка при чтении диска!
+Minetest mod adding jukeboxes, turntables, and consoles with custom vinyls to listen to music.=Мод Minetest, добавляющий проигрыватели, виниловые пластинки и консоли для прослушивания музыки.
